@@ -100,6 +100,15 @@ async function main() {
                     // Dashboard can still show them
                 }*/
 
+                // Already classified → don't call Groq again
+
+                if (fullThread.classification) {
+                    console.log(
+                        `Skipping already classified thread ${fullThread.threadId}`
+                    );
+                    continue;
+                }
+
                 try {
                     const result =
                         await classifier.classify(fullThread);
