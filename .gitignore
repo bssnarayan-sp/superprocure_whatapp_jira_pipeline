@@ -3,3 +3,6 @@ node_modules/
 data/whatsapp-profile/
 *.log
 .DS_Store
+aws_psr_c2s_server.pem
+package-lock.json
+sample.txt
