@@ -10,6 +10,8 @@ const PostgresThreadRepository =
     require("./implementation/database/PostgresThreadRepository");
 const N8nPublisher =
     require("./implementation/publishers/N8nPublisher");
+const GroqThreadClassifier =
+    require("./implementation/ai/GroqThreadClassifier");
 
 const POLL_INTERVAL_MS = 30000;
 
@@ -24,6 +26,9 @@ async function main() {
 
     const buildThreads =
         new BuildThreads(repository);
+
+    const classifier =
+        new GroqThreadClassifier();
 
     const publisher =
         new N8nPublisher(process.env.N8N_WEBHOOK_URL);
@@ -69,7 +74,7 @@ async function main() {
 
                 if (!fullThread) continue;
 
-                // n8n is optional
+                /*// n8n is optional
                 try {
                     if (
                         fullThread.jiraKey &&
@@ -93,6 +98,26 @@ async function main() {
                     // Do NOT fail crawler
                     // Do NOT remove/update messages
                     // Dashboard can still show them
+                }*/
+
+                try {
+                    const result =
+                        await classifier.classify(fullThread);
+
+                    await repository.updateClassification(
+                        thread.threadId,
+                        result
+                    );
+
+                    console.log(
+                        `Classified ${thread.threadId}: ${result.classification}`
+                    );
+
+                } catch (error) {
+                    console.error(
+                        `Classification failed ${thread.threadId}:`,
+                        error.message
+                    );
                 }
             }
 

@@ -1,5 +1,4 @@
 const { chromium } = require("playwright");
-
 const MessageSource =
     require("../../domain/interfaces/MessageSource");
 
@@ -43,15 +42,16 @@ class WhatsAppWebSource extends MessageSource {
     }
 
     async openChat(chatName) {
-        const chat =
-            this.page.locator(
-                `#pane-side span[title="${chatName}"]`
-            );
+        const chat = this.page.locator(
+            `#pane-side span[title="${chatName}"]`
+        );
 
-        await chat.first().waitFor({
-            state: "visible",
-            timeout: 10000
-        });
+        await chat
+            .first()
+            .waitFor({
+                state: "visible",
+                timeout: 10000
+            });
 
         await chat.first().click();
 
@@ -82,11 +82,7 @@ class WhatsAppWebSource extends MessageSource {
 
         const messages = [];
 
-        for (
-            let i = 0;
-            i < count;
-            i++
-        ) {
+        for (let i = 0; i < count; i++) {
             const item =
                 items.nth(i);
 
@@ -99,7 +95,9 @@ class WhatsAppWebSource extends MessageSource {
                             );
 
                         return root
-                            ? root.getAttribute("data-id")
+                            ? root.getAttribute(
+                                "data-id"
+                            )
                             : null;
                     }
                 );
@@ -109,26 +107,26 @@ class WhatsAppWebSource extends MessageSource {
             }
 
             const metadataLocator =
-                item.locator(
-                    "[data-pre-plain-text]"
-                ).first();
+                item.locator("[data-pre-plain-text]").first();
 
-            if (
-                await metadataLocator.count()
-                === 0
-            ) {
-                continue;
+            let metadata = null;
+
+            if (await metadataLocator.count() > 0) {
+                metadata =
+                    await metadataLocator.getAttribute(
+                        "data-pre-plain-text"
+                    );
             }
 
-            const metadata =
-                await metadataLocator.getAttribute(
-                    "data-pre-plain-text"
-                );
+            const parsed = metadata
+                ? this.parseMetadata(metadata)
+                : {
+                    sender: null,
+                    date: null,
+                    time: null
+                };
 
-            const parsed =
-                this.parseMetadata(metadata);
-
-            const text =
+            let text =
                 await this.extractText(item);
 
             const attachments =
@@ -137,18 +135,38 @@ class WhatsAppWebSource extends MessageSource {
                     messageId
                 );
 
+            // Important:
+            // image-only WhatsApp messages otherwise have empty text.
+            if (
+                !text &&
+                attachments.length > 0
+            ) {
+                text = "[Image]";
+            }
+
             const replyContext =
-                await this.extractReplyContext(item);
+                await this.extractReplyContext(
+                    item
+                );
 
             messages.push({
                 messageId,
-                sender: parsed.sender,
+
+                sender:
+                    parsed.sender,
+
                 timestamp:
-                    `${parsed.date} ${parsed.time}`,
+                    parsed.date && parsed.time
+                        ? `${parsed.date} ${parsed.time}`
+                        : null,
+
                 text,
+
                 attachments,
+
                 replyContext,
-                replyToMessageId: null,
+
+                replyToMessageId: null
             });
         }
 
@@ -156,10 +174,36 @@ class WhatsAppWebSource extends MessageSource {
             `Parsed ${messages.length} messages`
         );
 
-        const resolvedMessages =
-            this.resolveReplyLinks(messages);
+        // Temporary diagnostic.
+        // Useful specifically for image / quoted image replies.
+        console.dir(
+            messages.map(
+                message => ({
+                    messageId:
+                        message.messageId,
 
-        return resolvedMessages;
+                    text:
+                        message.text,
+
+                    attachments:
+                        message.attachments
+                            ?.length || 0,
+
+                    replyContext:
+                        message.replyContext,
+
+                    replyToMessageId:
+                        message.replyToMessageId
+                })
+            ),
+            {
+                depth: null
+            }
+        );
+
+        return this.resolveReplyLinks(
+            messages
+        );
     }
 
     async extractText(item) {
@@ -168,12 +212,15 @@ class WhatsAppWebSource extends MessageSource {
                 const clone =
                     element.cloneNode(true);
 
+                // Remove quoted reply text so it
+                // does not become part of actual message text.
                 clone
                     .querySelectorAll(
                         '[data-testid="quoted-message"]'
                     )
                     .forEach(
-                        (node) => node.remove()
+                        node =>
+                            node.remove()
                     );
 
                 const selector =
@@ -186,17 +233,21 @@ class WhatsAppWebSource extends MessageSource {
                         )
                     );
 
+                // Avoid nested duplicate selectable-text nodes.
                 const topLevel =
                     candidates.filter(
-                        (node) =>
+                        node =>
                             !node.parentElement
-                                ?.closest(selector)
+                                ?.closest(
+                                    selector
+                                )
                     );
 
                 return topLevel
                     .map(
-                        (node) =>
-                            node.innerText?.trim()
+                        node =>
+                            node.innerText
+                                ?.trim()
                     )
                     .filter(Boolean)
                     .join("\n")
@@ -217,17 +268,20 @@ class WhatsAppWebSource extends MessageSource {
             );
 
         if (
-            await imageThumb.count()
-            > 0
+            await imageThumb.count() > 0
         ) {
             const image =
-                imageThumb.locator("img").last();
+                imageThumb
+                    .locator("img")
+                    .last();
 
             const result =
                 await image.evaluate(
-                    async (img) => {
+                    async img => {
                         const response =
-                            await fetch(img.src);
+                            await fetch(
+                                img.src
+                            );
 
                         const blob =
                             await response.blob();
@@ -236,7 +290,9 @@ class WhatsAppWebSource extends MessageSource {
                             await blob.arrayBuffer();
 
                         const bytes =
-                            new Uint8Array(buffer);
+                            new Uint8Array(
+                                buffer
+                            );
 
                         let binary = "";
 
@@ -264,10 +320,13 @@ class WhatsAppWebSource extends MessageSource {
 
             attachments.push({
                 type: "image",
+
                 mimeType:
                     result.mimeType,
+
                 fileName:
                     `${messageId}.jpg`,
+
                 base64:
                     result.base64
             });
@@ -293,89 +352,189 @@ class WhatsAppWebSource extends MessageSource {
         return {
             time:
                 match[1].trim(),
+
             date:
                 match[2].trim(),
+
             sender:
                 match[3].trim()
         };
     }
 
-    async extractReplyContext(item) {
-        return item.evaluate((element) => {
-            const quoted =
-                element.querySelector(
-                    '[data-testid="quoted-message"]'
-                );
+    async extractReplyContext(
+        item
+    ) {
+        return item.evaluate(
+            (element) => {
+                const quoted =
+                    element.querySelector(
+                        '[data-testid="quoted-message"]'
+                    );
 
-            if (!quoted) {
-                return null;
+                if (!quoted) {
+                    return null;
+                }
+
+                const author =
+                    quoted.querySelector(
+                        '[data-testid="author"]'
+                    );
+
+                const textNodes =
+                    quoted.querySelectorAll(
+                        '[data-testid*="selectable-text"]'
+                    );
+
+                const text =
+                    Array.from(
+                        textNodes
+                    )
+                        .map(
+                            node =>
+                                node.innerText
+                                    ?.trim()
+                        )
+                        .filter(Boolean)
+                        .join("\n")
+                        .trim();
+
+                // WhatsApp quoted images are not
+                // always represented the same way.
+                const hasImage =
+                    !!quoted.querySelector(
+                        "img"
+                    ) ||
+                    !!quoted.querySelector(
+                        '[data-testid="image-thumb"]'
+                    ) ||
+                    !!quoted.querySelector(
+                        '[data-icon="image"]'
+                    );
+
+                return {
+                    sender:
+                        author
+                            ?.innerText
+                            ?.trim() ||
+                        null,
+
+                    text,
+
+                    hasImage
+                };
             }
-
-            const author =
-                quoted.querySelector(
-                    '[data-testid="author"]'
-                );
-
-            const textNodes =
-                quoted.querySelectorAll(
-                    '[data-testid*="selectable-text"]'
-                );
-
-            const text =
-                Array.from(textNodes)
-                    .map(node => node.innerText?.trim())
-                    .filter(Boolean)
-                    .join("\n")
-                    .trim();
-
-            return {
-                sender:
-                    author?.innerText?.trim() || null,
-                text
-            };
-        });
+        );
     }
 
     resolveReplyLinks(messages) {
-        for (let i = 0; i < messages.length; i++) {
-            const current = messages[i];
+        for (
+            let i = 0;
+            i < messages.length;
+            i++
+        ) {
+            const current =
+                messages[i];
 
-            if (!current.replyContext?.text) {
+            if (
+                !current.replyContext
+            ) {
                 continue;
             }
 
-            const quotedText =
+            const replyText =
                 this.normalizeText(
-                    current.replyContext.text
+                    current
+                        .replyContext
+                        .text
                 );
 
-            if (!quotedText) {
+            const isImageReply =
+                current.replyContext
+                    .hasImage ||
+                replyText ===
+                "photo" ||
+                replyText ===
+                "image" ||
+                replyText ===
+                "[image]";
+
+            // Special case:
+            // reply is quoting an image-only message.
+            if (isImageReply) {
+                for (
+                    let j = i - 1;
+                    j >= 0;
+                    j--
+                ) {
+                    const candidate =
+                        messages[j];
+
+                    if (
+                        candidate.attachments?.length > 0
+                    ) {
+                        current.replyToMessageId =
+                            candidate.messageId;
+
+                        if (
+                            !candidate.sender &&
+                            current.replyContext?.sender
+                        ) {
+                            candidate.sender =
+                                current.replyContext.sender;
+                        }
+
+                        break;
+                    }
+                }
+
                 continue;
             }
 
-            for (let j = i - 1; j >= 0; j--) {
-                const candidate = messages[j];
+            if (!replyText) {
+                continue;
+            }
+
+            // Normal quoted text matching.
+            for (
+                let j = i - 1;
+                j >= 0;
+                j--
+            ) {
+                const candidate =
+                    messages[j];
 
                 const candidateText =
                     this.normalizeText(
                         candidate.text
                     );
 
-                if (!candidateText) {
+                if (
+                    !candidateText
+                ) {
                     continue;
                 }
 
                 const textMatches =
-                    candidateText === quotedText ||
-                    candidateText.includes(quotedText) ||
-                    quotedText.includes(candidateText) ||
+                    candidateText ===
+                    replyText ||
+                    candidateText.includes(
+                        replyText
+                    ) ||
+                    replyText.includes(
+                        candidateText
+                    ) ||
                     candidateText.startsWith(
-                        quotedText.replace(/\.\.\.$/, "")
+                        replyText.replace(
+                            /\.\.\.$/,
+                            ""
+                        )
                     );
 
                 if (textMatches) {
-                    current.replyToMessageId =
-                        candidate.messageId;
+                    current
+                        .replyToMessageId =
+                        candidate
+                            .messageId;
 
                     break;
                 }
@@ -387,7 +546,14 @@ class WhatsAppWebSource extends MessageSource {
 
     normalizeText(value) {
         return (value || "")
-            .replace(/\s+/g, " ")
+            .replace(
+                /…/g,
+                "..."
+            )
+            .replace(
+                /\s+/g,
+                " "
+            )
             .trim()
             .toLowerCase();
     }

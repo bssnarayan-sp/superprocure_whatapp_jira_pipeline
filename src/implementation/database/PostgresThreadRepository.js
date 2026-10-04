@@ -405,6 +405,29 @@ class PostgresThreadRepository extends ThreadRepository {
             unsyncedMessages
         };
     }
+
+    async updateClassification(threadId, result) {
+        await this.pool.query(`
+    UPDATE support_threads
+    SET
+      classification = $1,
+      summary = $2,
+      description = $3,
+      customer = $4,
+      module = $5,
+      severity = $6,
+      updated_at = NOW()
+    WHERE thread_id = $7
+  `, [
+            result.classification,
+            result.summary,
+            result.description,
+            result.customer,
+            result.module,
+            result.severity,
+            threadId
+        ]);
+    }
 }
 
 module.exports =
