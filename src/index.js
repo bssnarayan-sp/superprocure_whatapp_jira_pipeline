@@ -64,13 +64,26 @@ async function main() {
             const threads =
                 await buildThreads.execute(rawMessages);
 
+            // Persist everything first so messages that moved into a
+            // parent's thread leave no empty thread behind.
             for (const thread of threads) {
                 await repository.saveThread(thread);
 
                 await repository.saveMessages(
                     thread.messages
                 );
+            }
 
+            const removed =
+                await repository.deleteEmptyThreads();
+
+            if (removed.length > 0) {
+                console.log(
+                    `Removed ${removed.length} empty thread(s): ${removed.join(", ")}`
+                );
+            }
+
+            for (const thread of threads) {
                 const fullThread =
                     await repository.getThread(
                         thread.threadId

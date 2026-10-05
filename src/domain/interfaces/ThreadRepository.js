@@ -26,6 +26,12 @@ class ThreadRepository {
         );
     }
     
+    async deleteEmptyThreads() {
+        throw new Error(
+            "deleteEmptyThreads() must be implemented"
+        );
+    }
+
     async getThread(threadId) {
         throw new Error(
             "getThread() must be implemented"

@@ -226,6 +226,29 @@ class PostgresThreadRepository extends ThreadRepository {
         }
     }
 
+    /*
+     * A message first seen as a root gets its own thread row. If a
+     * later poll resolves it as a reply, saveMessages() moves it into
+     * the parent's thread and leaves the old row with no messages.
+     * Remove those so threads always map to at least one message.
+     */
+    async deleteEmptyThreads() {
+        const result =
+            await this.pool.query(`
+                DELETE FROM support_threads t
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM support_messages m
+                    WHERE m.thread_id = t.thread_id
+                )
+                RETURNING thread_id
+            `);
+
+        return result.rows.map(
+            row => row.thread_id
+        );
+    }
+
     normalizeText(value) {
         return (value || "")
             .replace(/…/g, "...")
