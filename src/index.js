@@ -54,6 +54,10 @@ async function main() {
         try {
             console.log("Checking WhatsApp...");
 
+            if (!(await source.isAlive())) {
+                await source.reconnect();
+            }
+
             const rawMessages =
                 await source.getRawMessages();
 
@@ -100,6 +104,16 @@ async function main() {
                     // Dashboard can still show them
                 }*/
 
+                if (
+                    !fullThread.text ||
+                    !fullThread.text.trim()
+                ) {
+                    console.log(
+                        `Skipping empty thread ${fullThread.threadId}`
+                    );
+                    continue;
+                }
+
                 // Already classified → don't call Groq again
 
                 if (fullThread.classification) {
@@ -110,6 +124,7 @@ async function main() {
                 }
 
                 try {
+
                     const result =
                         await classifier.classify(fullThread);
 
@@ -135,6 +150,26 @@ async function main() {
                 "Crawler poll failed:",
                 error
             );
+
+            const browserClosed =
+                error.message.includes("Target page") ||
+                error.message.includes("browser has been closed") ||
+                error.message.includes("context or browser has been closed");
+
+            if (browserClosed) {
+                try {
+                    await source.reconnect();
+                    console.log(
+                        "WhatsApp browser recovered."
+                    );
+
+                } catch (reconnectError) {
+                    console.error(
+                        "WhatsApp reconnect failed:",
+                        reconnectError.message
+                    );
+                }
+            }
         } finally {
             running = false;
         }

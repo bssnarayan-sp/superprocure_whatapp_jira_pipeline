@@ -1,0 +1,529 @@
+{
+  "name": "whatsapp_jira_flow_v2",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -176
+      ],
+      "id": "2700258f-9fe6-40ae-8fae-9c3159e890d5",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "teAUjcOOAtV1Vc26",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract a structured support issue from this message.\n\nReturn only valid JSON:\n\n{\n  \"summary\": \"\",\n  \"description\": \"\",\n  \"customer\": \"\",\n  \"module\": \"\",\n  \"severity\": \"\",\n  \"reference_ids\": []\n}\n\nRules:\n- Do not invent information.\n- customer: only if explicitly present.\n- module: infer only if reasonably clear.\n- severity: Critical, High, Medium, Low based on stated impact.\n- reference_ids: trip, DO, ticket, order or transaction IDs mentioned.\n\nMessage:\n{{ $('JIRA Exists?').item.json.text }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        352,
+        -432
+      ],
+      "id": "6ff306a7-ac6f-480e-8ed5-ba42c8b27bd3",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE support_threads\nSET\n    jira_key = $1,\n    jira_status = 'Open',\n    summary = $2,\n    description = $3,\n    customer = $4,\n    module = $5,\n    severity = $6,\n    classification = $7,\n    updated_at = NOW()\nWHERE thread_id = $8;",
+        "options": {
+          "queryReplacement": "={{\n[\n  $json.key,\n  $(\"Parse LLM Response\").item.json.summary,\n  $(\"Parse LLM Response\").item.json.description,\n  $(\"Parse LLM Response\").item.json.customer,\n  $(\"Parse LLM Response\").item.json.module,\n  $(\"Parse LLM Response\").item.json.severity,\n  $(\"Parse LLM Response\").item.json.classification,\n  $(\"Parse LLM Response\").item.json.threadId\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        832,
+        -336
+      ],
+      "id": "37aceccb-2204-47c9-9307-cfbd6e0f83fe",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "PeqYX2lJ1wWSyCZT",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-support-v2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -576,
+        -208
+      ],
+      "id": "809fd441-09f0-4d77-a18f-ad6fb8ec8281",
+      "name": "Webhook",
+      "webhookId": "eda736f2-4eb3-45bb-b096-dc0195a7b40c"
+    },
+    {
+      "parameters": {
+        "project": {
+          "__rl": true,
+          "value": "10110",
+          "mode": "list",
+          "cachedResultName": "Narayan Workboard"
+        },
+        "issueType": {
+          "__rl": true,
+          "value": "10141",
+          "mode": "list",
+          "cachedResultName": "Bug"
+        },
+        "summary": "={{ $json.summary }}",
+        "additionalFields": {
+          "description": "=*Issue Summary*\n\n{{$json.description}}\n\n---\n\n*Classification*\n\n*Module:* {{$json.module}}\n*Severity:* {{$json.severity}}\n*Reference IDs:* {{($json.referenceIds || []).join(\", \")}}\n\n---\n\n*Source*\n\n*WhatsApp Thread ID:* {{$json.threadId}}\n\n---\n\n*Original WhatsApp Conversation*\n\n{quote}\n{{$json.originalText}}\n{quote}"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        816,
+        -592
+      ],
+      "id": "57248ed1-dda8-4463-917e-44eac0420e59",
+      "name": "Create an issue",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "MShNOika1sY6Ldwq",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bc4b3fbd-612d-4558-a490-bcd30706bccd",
+              "name": "threadId",
+              "value": "={{$json.body.threadId}}",
+              "type": "string"
+            },
+            {
+              "id": "7b0488ac-b623-4ae8-aa9e-0e6a984e6b8c",
+              "name": "sender",
+              "value": "={{$json.body.sender}}",
+              "type": "string"
+            },
+            {
+              "id": "898a4666-a84a-4829-84aa-63aee3f77470",
+              "name": "timestamp",
+              "value": "={{$json.body.timestamp}}",
+              "type": "string"
+            },
+            {
+              "id": "7b658897-7111-49eb-bb9d-fdbc06353380",
+              "name": "text",
+              "value": "={{$json.body.text}}",
+              "type": "string"
+            },
+            {
+              "id": "50c67912-01f5-4e54-b3d7-4788828f3377",
+              "name": "jiraKey",
+              "value": "={{$json.body.jiraKey}}",
+              "type": "string"
+            },
+            {
+              "id": "de5c008a-dfe3-43be-9867-69272615c879",
+              "name": "messages",
+              "value": "={{$json.body.messages}}",
+              "type": "string"
+            },
+            {
+              "id": "6ea7e969-8e4e-4198-ae02-279cbc7ffc7c",
+              "name": "unsyncedMessages",
+              "value": "={{$json.body.unsyncedMessages}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -400,
+        -208
+      ],
+      "id": "2e15a21c-c798-4e8d-b95a-87a62476b0a3",
+      "name": "Normalize Threads"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b1c0a2e6-e2cd-4e0e-b668-f1b207673491",
+              "leftValue": "={{$json.jiraKey}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -256,
+        -208
+      ],
+      "id": "e15468d4-b470-4bd6-9d95-d6f838d03e9f",
+      "name": "JIRA Exists?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "af166810-177e-46e6-9dd8-92022a45a28e",
+              "name": "classification",
+              "value": "bug",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        192,
+        -592
+      ],
+      "id": "2c1c64ac-93e0-4c69-af47-aa885935d16b",
+      "name": "Set Classification - Bug"
+    },
+    {
+      "parameters": {
+        "jsCode": "const issue = JSON.parse($json.text);\n\nconst thread = $node[\"Normalize Threads\"].json;\n\nreturn [\n  {\n    json: {\n      threadId: thread.threadId,\n      sender: thread.sender,\n      timestamp: thread.timestamp,\n      originalText: thread.text,\n      messages: thread.messages,\n      jiraKey: thread.jiraKey,\n\n      classification: \"bug\",\n\n      summary: issue.summary,\n      description: issue.description,\n      customer: issue.customer,\n      module: issue.module,\n      severity: issue.severity,\n      referenceIds: issue.reference_ids || []\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        -592
+      ],
+      "id": "bf6a8cf9-b836-4d59-b055-63c20285990b",
+      "name": "Parse LLM Response"
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.text }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "bug",
+              "description": "incorrect/failing product behavior or major production/service disruption"
+            },
+            {
+              "category": "support_query",
+              "description": "question or clarification"
+            },
+            {
+              "category": "noise",
+              "description": "acknowledgement, FYI, unrelated, or insufficient information"
+            }
+          ]
+        },
+        "options": {
+          "fallback": "discard",
+          "systemPromptTemplate": "You are classifying messages from a software product support WhatsApp group.\n\nChoose the single category that best represents the intent of the message.\n\nPay attention to whether the message describes incorrect system behavior, a production impact, a support question, an operational action request, or merely acknowledgement/noise.\n\nDo not assume that words such as \"priority\", \"urgent\", or mentions of people automatically mean an incident.\n\nIf a message cannot be understood without a previous message or quoted context, choose the closest category based only on the available text."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1.1,
+      "position": [
+        -192,
+        -512
+      ],
+      "id": "331dd70a-cc10-469c-a371-f6cd66eb1099",
+      "name": "Classify Message",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "af166810-177e-46e6-9dd8-92022a45a28e",
+              "name": "classification",
+              "value": "support",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        192,
+        -400
+      ],
+      "id": "412f8401-02e4-4f64-9f10-f77dec6f1607",
+      "name": "Set Classification - Support"
+    },
+    {
+      "parameters": {
+        "jsCode": "const thread = $node[\"Normalize Threads\"].json;\n\nlet messages = thread.unsyncedMessages || [];\n\nif (typeof messages === \"string\") {\n  messages = JSON.parse(messages);\n}\n\nconst jiraComment = messages\n  .map(\n    m => `[${m.timestamp}] ${m.sender}: ${m.text}`\n  )\n  .join(\"\\n\\n\");\n\nconst messageIdsCsv = messages\n  .map(m => m.messageId)\n  .join(\",\");\n\nreturn [\n  {\n    json: {\n      ...thread,\n      unsyncedMessages: messages,\n      jiraComment,\n      messageIdsCsv\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        32
+      ],
+      "id": "5ae70d02-4ebc-4a6b-962f-eb2445f675a9",
+      "name": "Build JIRA Comment"
+    },
+    {
+      "parameters": {
+        "resource": "issueComment",
+        "issueKey": "={{ $('Normalize Threads').item.json.jiraKey }}",
+        "comment": "={{$json.jiraComment}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        272,
+        32
+      ],
+      "id": "c077c95c-673a-4a38-a979-b6f2b113a1ca",
+      "name": "Add a comment",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "MShNOika1sY6Ldwq",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE support_messages\nSET\n    jira_synced = TRUE,\n    jira_synced_at = NOW()\nWHERE message_id = ANY(\n    string_to_array($1, ',')\n);\n\nUPDATE support_threads\nSET\n    updated_at = NOW()\nWHERE thread_id = $2;",
+        "options": {
+          "queryReplacement": "={{\n[\n  $(\"Build JIRA Comment\").item.json.messageIdsCsv,\n  $(\"Build JIRA Comment\").item.json.threadId\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        496,
+        32
+      ],
+      "id": "a11a559e-faeb-4129-86b6-8bff4535046c",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "PeqYX2lJ1wWSyCZT",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Classify Message",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an issue": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Threads": {
+      "main": [
+        [
+          {
+            "node": "JIRA Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JIRA Exists?": {
+      "main": [
+        [
+          {
+            "node": "Classify Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build JIRA Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Classification - Bug": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Response": {
+      "main": [
+        [
+          {
+            "node": "Create an issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Message": {
+      "main": [
+        [
+          {
+            "node": "Set Classification - Bug",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Classification - Support",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Classification - Support": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build JIRA Comment": {
+      "main": [
+        [
+          {
+            "node": "Add a comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add a comment": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6d8b02a7-165d-406a-8f0d-4ecfb7a2a197",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c3f163f4c35c205da4d53903d596e63fd575547421956b79d966ba523607a4b1"
+  },
+  "nodeGroups": [],
+  "id": "6juCwIV0srWA3VDD",
+  "tags": []
+}
