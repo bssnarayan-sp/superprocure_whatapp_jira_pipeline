@@ -4,6 +4,7 @@ const MessageSource =
     require("../../domain/interfaces/MessageSource");
 
 const MAX_HISTORY_SCROLLS = 10;
+const ITEM_TIMEOUT_MS = 5000;
 
 class WhatsAppWebSource extends MessageSource {
     constructor() {
@@ -230,8 +231,23 @@ class WhatsAppWebSource extends MessageSource {
         );
 
         const messages = [];
+        const seenIds = new Set();
+        const retried = new Set();
 
-        for (let i = 0; i < count; i++) {
+        /*
+         * WhatsApp re-renders/virtualizes the list while we read it, so
+         * an item can vanish between count() and nth(i). Fail fast
+         * instead of waiting the default 30s per item, retry once, and
+         * re-read the count as we go.
+         */
+        this.page.setDefaultTimeout(ITEM_TIMEOUT_MS);
+
+        try {
+        for (
+            let i = 0;
+            i < await items.count();
+            i++
+        ) {
             try {
                 const item =
                     items.nth(i);
@@ -252,7 +268,10 @@ class WhatsAppWebSource extends MessageSource {
                         }
                     );
 
-                if (!messageId) {
+                if (
+                    !messageId ||
+                    seenIds.has(messageId)
+                ) {
                     continue;
                 }
 
@@ -346,6 +365,8 @@ class WhatsAppWebSource extends MessageSource {
                     )
                 );
 
+                seenIds.add(messageId);
+
                 messages.push({
                     messageId,
 
@@ -370,11 +391,21 @@ class WhatsAppWebSource extends MessageSource {
                 });
 
             } catch (error) {
+                if (!retried.has(i)) {
+                    retried.add(i);
+                    await this.page.waitForTimeout(500);
+                    i--;
+                    continue;
+                }
+
                 console.warn(
                     `Skipping rendered item ${i}:`,
-                    error.message
+                    error.message.split("\n")[0]
                 );
             }
+        }
+        } finally {
+            this.page.setDefaultTimeout(30000);
         }
 
         const resolved =
