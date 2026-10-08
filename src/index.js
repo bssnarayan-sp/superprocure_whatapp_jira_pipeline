@@ -167,7 +167,9 @@ async function main() {
             const browserClosed =
                 error.message.includes("Target page") ||
                 error.message.includes("browser has been closed") ||
-                error.message.includes("context or browser has been closed");
+                error.message.includes("context or browser has been closed") ||
+                error.message.includes("Page crashed") ||
+                error.message.includes("Target crashed");
 
             if (browserClosed) {
                 try {

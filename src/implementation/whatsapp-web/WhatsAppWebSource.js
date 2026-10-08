@@ -14,6 +14,7 @@ class WhatsAppWebSource extends MessageSource {
         this.page = null;
         this.currentChat = null;
         this.unresolvedAttempted = new Set();
+        this.crashed = false;
     }
 
     async initialize() {
@@ -21,9 +22,20 @@ class WhatsAppWebSource extends MessageSource {
             await chromium.launchPersistentContext(
                 "./data/whatsapp-profile",
                 {
-                    headless: false
+                    headless: false,
+
+                    /*
+                     * Small VMs have a tiny /dev/shm; Chromium
+                     * tabs crash ("Page crashed") when it fills.
+                     */
+                    args: [
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu"
+                    ]
                 }
             );
+
+        this.crashed = false;
 
         const pages = this.context.pages();
 
@@ -31,6 +43,11 @@ class WhatsAppWebSource extends MessageSource {
             pages.length > 0
                 ? pages[0]
                 : await this.context.newPage();
+
+        this.page.on("crash", () => {
+            console.error("WhatsApp page crashed.");
+            this.crashed = true;
+        });
 
         await this.page.goto(
             "https://web.whatsapp.com"
@@ -987,6 +1004,7 @@ class WhatsAppWebSource extends MessageSource {
             return Boolean(
                 this.context &&
                 this.page &&
+                !this.crashed &&
                 !this.page.isClosed()
             );
         } catch {
